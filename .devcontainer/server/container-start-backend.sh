@@ -7,6 +7,7 @@ log "Preparing Immich Nest API Server"
 log ""
 export CI=1
 run_cmd pnpm --filter immich install
+run_cmd pnpm --filter @immich/sdk --filter @immich/plugin-sdk build
 
 log "Starting Nest API Server"
 log ""
