@@ -23,6 +23,7 @@ services:
     env_file: !reset []
   database:
     env_file: !reset []
+    ports: !reset []
     environment: !override
       POSTGRES_PASSWORD: ${DB_PASSWORD-postgres}
       POSTGRES_USER: ${DB_USERNAME-postgres}

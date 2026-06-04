@@ -21,6 +21,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { memoryManager, type MemoryAsset } from '$lib/managers/memory-manager.svelte';
   import type { TimelineAsset, Viewport } from '$lib/managers/timeline-manager/types';
+  import noThumbnailUrl from '$lib/assets/no-thumbnail.png';
   import { Route } from '$lib/route';
   import { getAssetBulkActions } from '$lib/services/asset.service';
   import { locale } from '$lib/stores/preferences.store';
@@ -491,10 +492,9 @@
                 draggable="false"
               />
             {:else}
-              <enhanced:img
+              <img
                 class="size-full rounded-2xl object-cover"
-                src="$lib/assets/no-thumbnail.png"
-                sizes="min(271px,186px)"
+                src={noThumbnailUrl}
                 alt={$t('previous_memory')}
                 draggable="false"
               />
@@ -638,10 +638,9 @@
                 draggable="false"
               />
             {:else}
-              <enhanced:img
+              <img
                 class="size-full rounded-2xl object-cover"
-                src="$lib/assets/no-thumbnail.png"
-                sizes="min(271px,186px)"
+                src={noThumbnailUrl}
                 alt={$t('next_memory')}
                 draggable="false"
               />
