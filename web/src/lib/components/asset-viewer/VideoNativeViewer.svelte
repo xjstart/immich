@@ -14,10 +14,12 @@
     mdiCheck,
     mdiChevronLeft,
     mdiChevronRight,
+    mdiFastForward,
     mdiFullscreen,
     mdiFullscreenExit,
     mdiPause,
     mdiPlay,
+    mdiRewind,
     mdiVolumeHigh,
     mdiVolumeLow,
     mdiVolumeMedium,
@@ -94,6 +96,9 @@
 
   const MAX_REBUILDS = 1;
   const SESSION_ID_REGEX = /\/video\/stream\/([0-9a-f-]{36})\//;
+  const SEEK_STEP_SECONDS = 10;
+  const SEEK_BACK_LABEL = `Seek back ${SEEK_STEP_SECONDS} seconds`;
+  const SEEK_FORWARD_LABEL = `Seek forward ${SEEK_STEP_SECONDS} seconds`;
 
   // hls.js can abandon fetching an in-flight fragment if it thinks it'll take too long, in which case
   // it emergency switches to a different variant. This extends the delay even further due to
@@ -313,6 +318,31 @@
     }
   });
 
+  const togglePlay = () => {
+    if (!videoPlayer) {
+      return;
+    }
+
+    if (videoPlayer.paused) {
+      void videoPlayer.play();
+      return;
+    }
+
+    videoPlayer.pause();
+  };
+
+  const seekBy = (offset: number) => {
+    const video = videoPlayer;
+    if (!video) {
+      return;
+    }
+
+    const duration = Number.isFinite(video.duration) ? video.duration : asset.duration ? asset.duration / 1000 : 0;
+    const target = Math.min(Math.max(video.currentTime + offset, 0), duration);
+    video.currentTime = target;
+    video.dispatchEvent(new Event('timeupdate'));
+  };
+
   // The time is only refreshed on HLS fragment decode by default,
   // so manually emit events on seek to update it immediately.
   const onSeeking = (event: Event) => event.currentTarget?.dispatchEvent(new Event('timeupdate'));
@@ -322,7 +352,19 @@
   use:shortcuts={[
     {
       shortcut: { key: ' ' },
-      onShortcut: () => (videoPlayer?.paused ? videoPlayer?.play() : videoPlayer?.pause()),
+      onShortcut: togglePlay,
+    },
+    {
+      shortcut: { key: 'k' },
+      onShortcut: togglePlay,
+    },
+    {
+      shortcut: { key: ',' },
+      onShortcut: () => seekBy(-SEEK_STEP_SECONDS),
+    },
+    {
+      shortcut: { key: '.' },
+      onShortcut: () => seekBy(SEEK_STEP_SECONDS),
     },
   ]}
 />
@@ -426,10 +468,28 @@
 
         <div class="flex h-32 w-full flex-col justify-end bg-linear-to-b to-black/80 px-4">
           <media-control-bar part="bottom" class="flex h-10 w-full gap-2">
+            <button
+              type="button"
+              class="shrink-0 rounded-full border-0 bg-transparent p-2 text-white outline-none transition-colors hover:bg-light-100 hover:text-immich-dark"
+              title={SEEK_BACK_LABEL}
+              aria-label={SEEK_BACK_LABEL}
+              onclick={() => seekBy(-SEEK_STEP_SECONDS)}
+            >
+              <Icon icon={mdiRewind} />
+            </button>
             <media-play-button class="shrink-0 rounded-full p-2 outline-none">
               <Icon slot="play" icon={mdiPlay} />
               <Icon slot="pause" icon={mdiPause} />
             </media-play-button>
+            <button
+              type="button"
+              class="shrink-0 rounded-full border-0 bg-transparent p-2 text-white outline-none transition-colors hover:bg-light-100 hover:text-immich-dark"
+              title={SEEK_FORWARD_LABEL}
+              aria-label={SEEK_FORWARD_LABEL}
+              onclick={() => seekBy(SEEK_STEP_SECONDS)}
+            >
+              <Icon icon={mdiFastForward} />
+            </button>
             <media-time-display showduration class="rounded-lg p-2 outline-none"></media-time-display>
 
             <span class="grow"></span>
