@@ -1,0 +1,109 @@
+name: Build Android APK Fork
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Optional numeric suffix for a separate package id, e.g. app.alextran.immich.pr9999'
+        required: false
+        default: '9999'
+      split_per_abi:
+        description: 'Build smaller ABI-specific APKs in addition to the universal APK'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-apk-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install mobile toolchain
+        working-directory: mobile
+        run: mise install
+
+      - name: Cache Flutter and Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            mobile/android/.gradle
+          key: android-apk-${{ runner.os }}-${{ hashFiles('mobile/pubspec.lock', 'mobile/android/gradle/wrapper/gradle-wrapper.properties', 'mobile/android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            android-apk-${{ runner.os }}-
+
+      - name: Install Flutter dependencies
+        run: mise //mobile:install
+
+      - name: Generate translations
+        run: mise //mobile:codegen:translation
+
+      - name: Generate platform APIs
+        run: mise //mobile:codegen:pigeon
+
+      - name: Create Android keystore when secrets are configured
+        working-directory: mobile
+        env:
+          KEY_JKS: ${{ secrets.KEY_JKS }}
+        run: |
+          if [ -n "$KEY_JKS" ]; then
+            printf "%s" "$KEY_JKS" | base64 -d > android/key.jks
+            echo "Using custom Android keystore from repository secrets."
+          else
+            echo "No KEY_JKS secret configured; Gradle will use the debug signing config for this APK."
+          fi
+
+      - name: Build universal APK
+        working-directory: mobile
+        env:
+          ALIAS: ${{ secrets.ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: flutter build apk --release
+
+      - name: Build ABI-specific APKs
+        if: ${{ inputs.split_per_abi }}
+        working-directory: mobile
+        env:
+          ALIAS: ${{ secrets.ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: immich-android-apk
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
