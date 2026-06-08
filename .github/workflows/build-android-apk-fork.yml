@@ -75,6 +75,32 @@ jobs:
           find pigeon -name '*.dart' -print0 | xargs -0 -n1 -P4 -I{} dart run pigeon --input {}
           dart format lib/platform/
 
+      - name: Warm Gradle distribution cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle_url="https://services.gradle.org/distributions/gradle-8.14-all.zip"
+          zip_path="$RUNNER_TEMP/gradle-8.14-all.zip"
+
+          for attempt in 1 2 3 4 5; do
+            echo "Downloading Gradle distribution, attempt ${attempt}..."
+            if curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --max-time 600 "$gradle_url" --output "$zip_path"; then
+              echo "Gradle distribution downloaded to $zip_path"
+              break
+            fi
+
+            if [ "$attempt" = "5" ]; then
+              echo "Failed to download Gradle distribution after ${attempt} attempts."
+              exit 1
+            fi
+
+            sleep $((attempt * 20))
+          done
+
+          export ZIP_URL="file://$zip_path"
+          python3 -c 'from pathlib import Path; import os; wrapper = Path("mobile/android/gradle/wrapper/gradle-wrapper.properties"); lines = wrapper.read_text().splitlines(); output = ["distributionUrl=" + os.environ["ZIP_URL"] if line.startswith("distributionUrl=") else "validateDistributionUrl=false" if line.startswith("validateDistributionUrl=") else line for line in lines]; wrapper.write_text("\n".join(output) + "\n")'
+          cat mobile/android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Create Android keystore when secrets are configured
         working-directory: mobile
         env:
