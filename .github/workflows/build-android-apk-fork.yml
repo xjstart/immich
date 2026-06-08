@@ -30,23 +30,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup mise
-        uses: jdx/mise-action@v2
-        with:
-          install: true
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
 
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+          cache: true
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install mobile toolchain
-        working-directory: mobile
-        run: mise install
 
       - name: Cache Flutter and Gradle
         uses: actions/cache@v4
@@ -61,13 +59,21 @@ jobs:
             android-apk-${{ runner.os }}-
 
       - name: Install Flutter dependencies
-        run: mise //mobile:install
+        working-directory: mobile
+        run: flutter pub get
 
       - name: Generate translations
-        run: mise //mobile:codegen:translation
+        working-directory: mobile
+        run: |
+          dart run easy_localization:generate -S ../i18n
+          dart run bin/generate_keys.dart
+          dart format lib/generated/codegen_loader.g.dart lib/generated/translations.g.dart
 
       - name: Generate platform APIs
-        run: mise //mobile:codegen:pigeon
+        working-directory: mobile
+        run: |
+          find pigeon -name '*.dart' -print0 | xargs -0 -n1 -P4 -I{} dart run pigeon --input {}
+          dart format lib/platform/
 
       - name: Create Android keystore when secrets are configured
         working-directory: mobile
