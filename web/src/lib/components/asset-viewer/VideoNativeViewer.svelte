@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { zoomImageAction } from '$lib/actions/zoom-image';
+  import AssetViewerEvents from '$lib/components/AssetViewerEvents.svelte';
   import FaceEditor from '$lib/components/asset-viewer/face-editor/FaceEditor.svelte';
   import VideoRemoteViewer from '$lib/components/asset-viewer/VideoRemoteViewer.svelte';
   import { assetViewerFadeDuration } from '$lib/constants';
@@ -100,6 +102,13 @@
   const SEEK_STEP_SECONDS = 10;
   const SEEK_BACK_LABEL = `Seek back ${SEEK_STEP_SECONDS} seconds`;
   const SEEK_FORWARD_LABEL = `Seek forward ${SEEK_STEP_SECONDS} seconds`;
+  const createDisabledZoomState = () => ({
+    currentRotation: 0,
+    currentZoom: 1,
+    enable: false,
+    currentPositionX: 0,
+    currentPositionY: 0,
+  });
 
   // hls.js can abandon fetching an in-flight fragment if it thinks it'll take too long, in which case
   // it emergency switches to a different variant. This extends the delay even further due to
@@ -277,6 +286,7 @@
     if (videoPlayer) {
       videoPlayer.src = '';
     }
+    assetViewerManager.resetZoomState();
   });
 
   const handleCanPlay = async (video: HTMLVideoElement) => {
@@ -311,6 +321,10 @@
   };
 
   const onSwipe = (event: SwipeCustomEvent) => {
+    if (assetViewerManager.zoom > 1) {
+      return;
+    }
+
     if (event.detail.direction === 'left') {
       onNextAsset();
     }
@@ -321,12 +335,47 @@
 
   let containerWidth = $state(0);
   let containerHeight = $state(0);
+  let wasFaceEditMode = false;
 
   $effect(() => {
     if (assetViewerManager.isFaceEditMode) {
       videoPlayer?.pause();
+      assetViewerManager.zoomState = createDisabledZoomState();
+      wasFaceEditMode = true;
+      return;
+    }
+
+    if (wasFaceEditMode) {
+      assetViewerManager.resetZoomState();
+      wasFaceEditMode = false;
     }
   });
+
+  $effect(() => {
+    // reset when navigating between assets, switching live-photo motion video, or toggling original playback
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    assetFileUrl;
+    if (assetViewerManager.isFaceEditMode) {
+      assetViewerManager.zoomState = createDisabledZoomState();
+      return;
+    }
+    assetViewerManager.resetZoomState();
+  });
+
+  $effect(() => {
+    if (castManager.isCasting) {
+      assetViewerManager.resetZoomState();
+    }
+  });
+
+  const onZoom = () => {
+    if (assetViewerManager.isFaceEditMode || castManager.isCasting || !videoPlayer) {
+      return;
+    }
+
+    const targetZoom = assetViewerManager.zoom > 1 ? 1 : 2;
+    assetViewerManager.animatedZoom(targetZoom);
+  };
 
   const togglePlay = () => {
     if (!videoPlayer) {
@@ -358,8 +407,17 @@
   const onSeeking = (event: Event) => event.currentTarget?.dispatchEvent(new Event('timeupdate'));
 </script>
 
+{#if !castManager.isCasting}
+  <AssetViewerEvents {onZoom} />
+{/if}
+
 <svelte:body
   use:shortcuts={[
+    {
+      shortcut: { key: 'z' },
+      onShortcut: onZoom,
+      preventDefault: true,
+    },
     {
       shortcut: { key: ' ' },
       onShortcut: togglePlay,
@@ -397,6 +455,8 @@
     class="flex h-full place-content-center place-items-center select-none"
     bind:clientWidth={containerWidth}
     bind:clientHeight={containerHeight}
+    ondblclick={onZoom}
+    use:zoomImageAction={{ zoomTarget: videoPlayer }}
   >
     {#if castManager.isCasting}
       <div class="h-full place-content-center place-items-center">
@@ -465,7 +525,12 @@
         {/if}
 
         {#if extendedControls}
-          <media-settings-menu hidden anchor="auto" class="min-w-3xs rounded-xl border border-light-300 shadow-sm">
+          <media-settings-menu
+            hidden
+            anchor="auto"
+            class="min-w-3xs rounded-xl border border-light-300 shadow-sm"
+            data-overlay-interactive
+          >
             <Icon slot="checked-indicator" icon={mdiCheck} class="m-2" />
             <media-settings-menu-item class="mx-1 rounded-lg p-1 ps-2">
               {$t('media_chrome.playback_rate')}
@@ -488,7 +553,7 @@
           </media-settings-menu>
         {/if}
 
-        <div class="flex h-32 w-full flex-col justify-end bg-linear-to-b to-black/80 px-4">
+        <div class="flex h-32 w-full flex-col justify-end bg-linear-to-b to-black/80 px-4" data-overlay-interactive>
           <media-control-bar part="bottom" class="flex h-10 w-full gap-2">
             <button
               type="button"
