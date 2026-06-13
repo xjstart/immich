@@ -7,6 +7,7 @@ type TouchEventLike = {
   targetTouches: ArrayLike<unknown>;
 };
 const asTouchEvent = (event: Event) => event as unknown as TouchEventLike;
+const CLICK_SUPPRESSION_DRAG_DISTANCE = 4;
 
 export const zoomImageAction = (node: HTMLElement, options?: { zoomTarget?: HTMLElement }) => {
   const zoomInstance = createZoomImageWheel(node, {
@@ -24,6 +25,48 @@ export const zoomImageAction = (node: HTMLElement, options?: { zoomTarget?: HTML
   const { signal } = controller;
 
   node.addEventListener('pointerdown', () => assetViewerManager.cancelZoomAnimation(), { capture: true, signal });
+
+  let pointerStart: { id: number; x: number; y: number } | undefined;
+  let suppressNextClick = false;
+  const trackDragStart = (event: PointerEvent) => {
+    if (!event.isPrimary || event.button !== 0 || assetViewerManager.zoom <= 1) {
+      pointerStart = undefined;
+      return;
+    }
+
+    pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  };
+  const trackDragMove = (event: PointerEvent) => {
+    if (!pointerStart || event.pointerId !== pointerStart.id || assetViewerManager.zoom <= 1) {
+      return;
+    }
+
+    if (
+      Math.abs(event.clientX - pointerStart.x) > CLICK_SUPPRESSION_DRAG_DISTANCE ||
+      Math.abs(event.clientY - pointerStart.y) > CLICK_SUPPRESSION_DRAG_DISTANCE
+    ) {
+      suppressNextClick = true;
+    }
+  };
+  const trackDragEnd = (event: PointerEvent) => {
+    if (event.pointerId === pointerStart?.id) {
+      pointerStart = undefined;
+    }
+  };
+  const suppressClickAfterDrag = (event: MouseEvent) => {
+    if (!suppressNextClick) {
+      return;
+    }
+
+    suppressNextClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  node.addEventListener('pointerdown', trackDragStart, { capture: true, signal });
+  node.addEventListener('pointermove', trackDragMove, { capture: true, signal });
+  node.addEventListener('pointerup', trackDragEnd, { capture: true, signal });
+  node.addEventListener('pointercancel', trackDragEnd, { capture: true, signal });
+  node.addEventListener('click', suppressClickAfterDrag, { capture: true, signal });
 
   // Intercept events in capture phase to prevent zoom-image from seeing interactions on
   // overlay elements (e.g. OCR text boxes), preserving browser defaults like text selection.
